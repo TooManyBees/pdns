@@ -99,6 +99,8 @@ struct dynmetrics
 {
   std::atomic<unsigned long>* d_ptr;
   std::string d_prometheusName;
+  std::optional<string> d_prometheusTypeName;
+  std::optional<string> d_prometheusDescr;
 };
 
 static LockGuarded<map<string, dynmetrics>> d_dynmetrics;
@@ -167,6 +169,11 @@ static std::string getPrometheusName(const std::string& arg)
 
 std::atomic<unsigned long>* getDynMetric(const std::string& str, const std::string& prometheusName)
 {
+  return initDynMetric(str, prometheusName, "", "");
+}
+
+std::atomic<unsigned long>* initDynMetric(const std::string& str, const std::string& prometheusName, const std::string& prometheusTypeName, const std::string& prometheusDescr)
+{
   auto dm = d_dynmetrics.lock();
   auto f = dm->find(str);
   if (f != dm->end()) {
@@ -181,7 +188,16 @@ std::atomic<unsigned long>* getDynMetric(const std::string& str, const std::stri
     name = getPrometheusName(name);
   }
 
-  auto ret = dynmetrics{new std::atomic<unsigned long>(), std::move(name)};
+  std::optional<std::string> typeName;
+  if (!prometheusTypeName.empty()) {
+    typeName = std::optional(std::move(prometheusTypeName));
+  }
+  std::optional<std::string> descr;
+  if (!prometheusDescr.empty()) {
+    descr = std::optional(std::move(prometheusDescr));
+  }
+
+  auto ret = dynmetrics{new std::atomic<unsigned long>(), std::move(name), typeName, descr};
   (*dm)[str] = ret;
   return ret.d_ptr;
 }
@@ -252,7 +268,7 @@ StatsMap getAllStatsMap(StatComponent component)
   {
     for (const auto& a : *(d_dynmetrics.lock())) {
       if (disabledlistMap.count(a.first) == 0) {
-        ret.emplace(a.first, StatsMapEntry{a.second.d_prometheusName, std::to_string(*a.second.d_ptr)});
+        ret.emplace(a.first, StatsMapEntry{a.second.d_prometheusName, std::to_string(*a.second.d_ptr), a.second.d_prometheusTypeName, a.second.d_prometheusDescr});
       }
     }
   }
